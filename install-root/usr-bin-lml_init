@@ -1,0 +1,393 @@
+#!/usr/bin/python2.7
+
+import os
+import shlex
+import shutil
+import struct
+import subprocess
+import sys
+import syslog
+
+
+def vbox_initialize():
+    # We initialize VirtualBox very early to enable scripts to use GuestProperty APIs
+    cmds = [
+        '/sbin/modprobe vboxguest', '/sbin/modprobe vboxsf',
+        '/usr/bin/VBoxService --disable-automount'
+    ]
+    for cmd in cmds:
+        subprocess.check_output(shlex.split(cmd))
+
+    syslog.syslog(
+        syslog.LOG_INFO,
+        'vbox_initialize: Initialized VirtualBox modules and started VBoxService'
+    )
+
+
+def bootsync():
+    f = '/var/lib/lambda-machine-local/bootsync.sh'
+    if not os.path.exists(f):
+        syslog.syslog(syslog.LOG_INFO, 'bootsync: Creating new bootsync.sh')
+        templ = """#!/bin/bash
+
+# This file is executed prior to starting docker daemon. You can customize this
+# file to introduce your changes. All changes to this file and other files in
+# `/var/lib/lambda-machine-local` are preserved across machine reboots.
+#
+# Lambda Machine Local init (`/usr/bin/lml_init`) will execute this file and
+# expect it to successfully complete with an exit code of 0. If the script
+# fails, then `lml_init` will terminate and a message will be logged to
+# `/var/log/messages`
+#
+# When a failure happens, you will see that machine is stuck at
+# ```
+# (xxx) Check network to re-create if needed...
+# (xxx) Waiting for an IP...
+# ```
+#
+# If you are looking to customize this file, we would like to give you an
+# additional pointer. You can create a local machine with `--virtualbox-ui-type
+# gui`. This will provide a window to the machine console. You can login to
+# machine with user name/password - ll-user/ll-user, `sudo -i` and investigate
+# the behavior of your changes.
+
+exit 0
+"""
+        fo = open(f, 'w')
+        fo.write(templ)
+        fo.close()
+        os.chmod(f, 0755)
+
+    syslog.syslog(syslog.LOG_INFO, 'bootsync: Running bootsync.sh')
+
+    try:
+        ret = subprocess.call(shlex.split(f))
+    except OSError, e:
+        syslog.syslog(syslog.LOG_INFO, "bootsync: Failed with exception %s" %
+                      str(e))
+        sys.exit(-1)
+
+    if ret != 0:
+        syslog.syslog(syslog.LOG_INFO, "bootsync: Failed with exit code %d" %
+                      ret)
+        sys.exit(ret)
+
+    syslog.syslog(syslog.LOG_INFO, 'bootsync: Successfully completed')
+
+
+def bootlocal():
+    f = '/var/lib/lambda-machine-local/bootlocal.sh'
+    if not os.path.exists(f):
+        syslog.syslog(syslog.LOG_INFO, 'bootlocal: Creating new bootlocal.sh')
+        templ = """#!/bin/bash
+
+# This file is executed at the end by Lambda Machine Local init
+# (`/usr/bin/lml_init`). You can customize this file to introduce your changes.
+# All changes to this file and other files in `/var/lib/lambda-machine-local`
+# are preserved across machine reboots.
+#
+# `lml_init` expects this file to successfully complete with an exit code of 0. If the script
+# fails, then `lml_init` will log a message to `/var/log/messages`
+#
+# If you are looking to customize this file, we would like to give you an
+# additional pointer. You can create a local machine with `--virtualbox-ui-type
+# gui`. This will provide a window to the machine console. You can login to
+# machine with user name/password - ll-user/ll-user, `sudo -i` and investigate
+# the behavior of your changes.
+
+exit 0
+"""
+        fo = open(f, 'w')
+        fo.write(templ)
+        fo.close()
+        os.chmod(f, 0755)
+
+    syslog.syslog(syslog.LOG_INFO, 'bootlocal: Running bootlocal.sh')
+
+    try:
+        ret = subprocess.call(shlex.split(f))
+    except OSError, e:
+        syslog.syslog(syslog.LOG_INFO, "bootlocal: Failed with exception %s" %
+                      str(e))
+        return
+
+    if ret != 0:
+        syslog.syslog(syslog.LOG_INFO, "bootlocal: Failed with exit code %d" %
+                      ret)
+        return
+
+    syslog.syslog(syslog.LOG_INFO, 'bootlocal: Successfully completed')
+
+
+def vbox_sf_mount():
+    # extract shared folder mappings
+    # VBoxControl --nologo sharedfolder list -automount | tail -n+3 | cut  -d ' ' -f 3
+    cmd = 'VBoxControl --nologo sharedfolder list -automount'
+    output = subprocess.check_output(shlex.split(cmd)).split('\n')
+
+    if output[2] == 'vbox_sf_mount: No Shared Folders available.':
+        syslog.syslog(syslog.LOG_INFO,
+                      'vbox_sf_mount: No shared folders found.')
+        return
+
+    # when multiple `--virtualbox-share-folder` is specified on the command
+    # line, only the last one is used
+    sharename = output[2][5:]
+    # add a leading slash to sharename to get sharedir. Ignore if one already
+    # exists
+    if sharename[0] == '/':
+        sharedir = sharename
+    else:
+        sharedir = '/' + sharename
+
+    if os.path.exists(sharedir):
+        syslog.syslog(syslog.LOG_INFO,
+                      "vbox_sf_mount: %s exists. Not proceeding with mount" %
+                      sharedir)
+        return
+
+    cmd = "mkdir -p %s" % sharedir
+    subprocess.check_output(shlex.split(cmd))
+
+    # uid,gid of ll-user is 500,500
+    mountoptions = 'defaults,iocharset=utf8,uid=500,gid=500'
+
+    cmd = "mount -t vboxsf -o %s %s %s" % (mountoptions, sharename, sharedir)
+    ret = subprocess.call(shlex.split(cmd))
+
+    if ret != 0:
+        syslog.syslog(syslog.LOG_INFO, "vbox_sf_mount: Unable to - %s" % cmd)
+        return
+
+    syslog.syslog(syslog.LOG_INFO, "vbox_sf_mount: Mounted %s" % sharedir)
+
+
+def sshd_start():
+    cmds = [
+        # set UseDNS to no
+        "sed -i -e 's/#UseDNS yes/UseDNS no/' /etc/ssh/sshd_config",
+        'service sshd start'
+    ]
+    for cmd in cmds:
+        subprocess.check_output(shlex.split(cmd))
+
+    syslog.syslog(syslog.LOG_INFO, 'sshd_start: sshd started')
+
+
+def disk_update_links():
+    # update links
+    cmds = [
+        'su -l ll-user -c "ln -sf /var/lib/lambda-machine-local/home/ll-user/.ssh /home/ll-user/.ssh"',
+        'rm -rf /var/lib/docker',
+        'ln -sf /var/lib/lambda-machine-local/var/lib/docker /var/lib/docker',
+        'rm -f /etc/sysconfig/docker',
+        'ln -sf /var/lib/lambda-machine-local/etc/sysconfig/docker /etc/sysconfig/docker',
+        'rm -f /etc/sysconfig/docker-storage',
+        'ln -sf /var/lib/lambda-machine-local/etc/sysconfig/docker-storage /etc/sysconfig/docker-storage',
+        'rm -f /etc/sysconfig/docker-storage-setup',
+        'ln -sf /var/lib/lambda-machine-local/etc/sysconfig/docker-storage-setup /etc/sysconfig/docker-storage-setup'
+    ]
+    for cmd in cmds:
+        subprocess.check_output(shlex.split(cmd))
+
+    syslog.syslog(
+        syslog.LOG_INFO,
+        'disk_update_links: Updated links from rootfs to /mnt/lambda-linux-local'
+    )
+
+
+def disk_partitions_mount():
+    # scan LVM and mount /var/lib/lambda-machine-local
+    cmd = 'pvscan'
+    subprocess.check_output(shlex.split(cmd))
+    cmd = 'vgscan'
+    subprocess.check_output(shlex.split(cmd))
+    cmd = 'mkdir -p /var/lib/lambda-machine-local'
+    subprocess.check_output(shlex.split(cmd))
+    cmd = 'mount -t ext4 -L ll-vbox-data /var/lib/lambda-machine-local'
+    subprocess.check_output(shlex.split(cmd))
+    syslog.syslog(
+        syslog.LOG_INFO,
+        'disk_partitions_mount: Mounted /var/lib/lambda-machine-local')
+
+
+def disk_setup_check_format_mount():
+    # MAGIC string along with SSH keys is set by lambda-machine-local when a
+    # new disk is created. If we find MAGIC string then we are dealing with a
+    # new disk.
+    MAGIC = "lambda-linux-vbox-disk, please format-me"
+    f = open('/dev/sda', 'rb')
+    check = struct.unpack("%ss" % len(MAGIC), f.read(len(MAGIC)))[0]
+    f.close()
+
+    if check != MAGIC:
+        syslog.syslog(
+            syslog.LOG_INFO,
+            'disk_setup_check_format_mount: MAGIC string not found. Assuming disk is initialized'
+        )
+        disk_partitions_mount()
+        disk_update_links()
+        return
+
+    syslog.syslog(
+        syslog.LOG_INFO,
+        'disk_setup_check_format_mount: MAGIC string found. Proceeding to initialize disk'
+    )
+
+    # extract sshkeys
+    cmd = 'dd if=/dev/sda of=/tmp/sshkeys.tar bs=1 count=4096'
+    subprocess.check_output(shlex.split(cmd))
+    cmd = 'mkdir -p /tmp/sshkeys'
+    subprocess.check_output(shlex.split(cmd))
+    cmd = 'tar xvf ../sshkeys.tar'
+    subprocess.check_output(shlex.split(cmd), cwd='/tmp/sshkeys')
+
+    f = open('/tmp/sshkeys/.ssh/authorized_keys', 'r')
+    authorized_keys = f.read()
+    f.close()
+    f = open('/tmp/sshkeys/.ssh/authorized_keys2', 'r')
+    authorized_keys2 = f.read()
+    f.close()
+
+    shutil.rmtree('/tmp/sshkeys')
+    os.remove('/tmp/sshkeys.tar')
+
+    # cleanup /dev/sda[0:4095]
+    cmd = 'dd if=/dev/zero of=/dev/sda bs=1 count=4096'
+    subprocess.check_output(shlex.split(cmd))
+
+    syslog.syslog(syslog.LOG_INFO,
+                  'disk_setup_check_format_mount: Extracted ssh keys')
+
+    # initialize disk
+
+    # create GPT partition table
+    cmd = 'sgdisk -og /dev/sda'
+    subprocess.check_output(shlex.split(cmd))
+
+    # We allocate approximately 20% of the disk to
+    # /var/lib/lambda-machine-local partition, which is used to store
+    # persistent data. This space is also meant for users to be able to "rsync"
+    # their code and assets from the host and bind mount it into the container.
+    # In future we need provide a CLI configurable option for this.
+    cmd = 'blockdev --getsz /dev/sda'
+    endsector = subprocess.check_output(shlex.split(cmd))
+    endsector = endsector.strip()
+    endsector = str(int(int(endsector) * .2))
+
+    # create a partition for /var/lib/lambda-machine-local
+    cmd = "sgdisk -n 1:2048:%s -c 1:Linux -t 1:8300 /dev/sda" % endsector
+    subprocess.check_output(shlex.split(cmd))
+
+    # allocate remaining disk space for docker LVM PV
+    cmd = 'sgdisk -F /dev/sda'
+    firstusablesector = subprocess.check_output(shlex.split(cmd))
+    firstusablesector = firstusablesector.strip()
+    cmd = 'sgdisk -E /dev/sda'
+    lastusablesector = subprocess.check_output(shlex.split(cmd))
+    lastusablesector = lastusablesector.strip()
+    cmd = "sgdisk -n 2:%s:%s -c 2:'Linux LVM' -t 2:8E00 /dev/sda" % (
+        firstusablesector, lastusablesector)
+    subprocess.check_output(shlex.split(cmd))
+
+    syslog.syslog(syslog.LOG_INFO,
+                  'disk_setup_check_format_mount: Created partitions')
+
+    # format ext4 partition
+    cmd = 'mkfs.ext4 -L ll-vbox-data /dev/sda1'
+    subprocess.check_output(shlex.split(cmd))
+
+    # create docker VG
+    cmd = 'pvcreate /dev/sda2'
+    subprocess.check_output(shlex.split(cmd))
+    cmd = 'vgcreate docker /dev/sda2'
+    subprocess.check_output(shlex.split(cmd))
+    syslog.syslog(syslog.LOG_INFO,
+                  'disk_setup_check_format_mount: Initialized partitions')
+
+    disk_partitions_mount()
+
+    cmds = [
+        # root
+        'mkdir -p /var/lib/lambda-machine-local/root',
+
+        # home/ll-user
+        'mkdir -p /var/lib/lambda-machine-local/home/ll-user',
+        'chown ll-user:ll-user /var/lib/lambda-machine-local/home/ll-user',
+        'chmod 700 /var/lib/lambda-machine-local/home/ll-user',
+        'mkdir -p /var/lib/lambda-machine-local/home/ll-user/.ssh',
+        'chown ll-user:ll-user /var/lib/lambda-machine-local/home/ll-user/.ssh',
+        'chmod 700 /var/lib/lambda-machine-local/home/ll-user/.ssh',
+
+        # var/lib/docker
+        'mkdir -p /var/lib/lambda-machine-local/var/lib/docker',
+
+        # etc/sysconfig
+        'mkdir -p /var/lib/lambda-machine-local/etc/sysconfig',
+    ]
+    for cmd in cmds:
+        subprocess.check_output(shlex.split(cmd))
+
+    # docker-storage-setup overwrites `/etc/sysconfig/docker-storage`.
+    # So we run docker-storage-setup first, and then copy
+    # `/etc/sysconfig/{docker,docker-storage,docker-storage-setup}` over to
+    # `/var/lib/lambda-machine-local/etc/sysconfig` before creating symlinks
+    fo = open('/etc/sysconfig/docker-storage-setup', 'w')
+    s = """VG=docker
+DATA_SIZE=99%FREE
+AUTO_EXTEND_POOL=yes
+LV_ERROR_WHEN_FULL=yes
+EXTRA_DOCKER_STORAGE_OPTIONS="--storage-opt dm.fs=ext4"
+"""
+    fo.write(s)
+    fo.close()
+    cmd = '/usr/bin/docker-storage-setup'
+    subprocess.check_output(shlex.split(cmd))
+
+    cmds = [
+        'cp /etc/sysconfig/docker /var/lib/lambda-machine-local/etc/sysconfig/docker',
+        'cp /etc/sysconfig/docker-storage /var/lib/lambda-machine-local/etc/sysconfig/docker-storage',
+        'cp /etc/sysconfig/docker-storage-setup /var/lib/lambda-machine-local/etc/sysconfig/docker-storage-setup',
+    ]
+    for cmd in cmds:
+        subprocess.check_output(shlex.split(cmd))
+
+    sshdir = '/var/lib/lambda-machine-local/home/ll-user/.ssh'
+    for name, content in [('authorized_keys', authorized_keys),
+                          ('authorized_keys2', authorized_keys2)]:
+        fo = open("%s/%s" % (sshdir, name), 'w')
+        fo.write(content)
+        fo.close()
+    cmds = [
+        "chown ll-user:ll-user %s/authorized_keys" % sshdir,
+        "chown ll-user:ll-user %s/authorized_keys2" % sshdir
+    ]
+    for cmd in cmds:
+        subprocess.check_output(shlex.split(cmd))
+
+    syslog.syslog(
+        syslog.LOG_INFO,
+        'disk_setup_check_format_mount: Created directories and files /var/lib/lambda-machine-local'
+    )
+    disk_update_links()
+
+
+def main():
+    # Setup syslog
+    syslog.openlog('lml-init', syslog.LOG_PID)
+
+    vbox_initialize()
+
+    disk_setup_check_format_mount()
+
+    vbox_sf_mount()
+
+    bootsync()
+
+    sshd_start()
+
+    bootlocal()
+
+
+if __name__ == '__main__':
+    main()

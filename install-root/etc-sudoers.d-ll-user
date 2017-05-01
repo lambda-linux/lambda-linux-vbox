@@ -1,0 +1,5 @@
+# Override built-in defaults for ll-user
+Defaults:ll-user !requiretty
+
+# User rules for ll-user
+ll-user          ALL=(ALL) NOPASSWD:ALL
