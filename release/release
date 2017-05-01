@@ -1,0 +1,121 @@
+#!/usr/bin/python2.7
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+import yaml
+import mako.template
+
+
+def gen_release_desc(release_yaml):
+    templ = """* Lambda Linux VirtualBox ISO [${data['github_tag']}](https://github.com/lambda-linux/lambda-linux-vbox/releases/tag/${data['github_tag']})
+* Docker [${data['docker']}](https://github.com/docker/docker/releases/tag/${data['docker']})
+* Kernel [${data['kernel']}](https://cdn.kernel.org/pub/linux/kernel/v4.x/ChangeLog-${data['kernelwov']})
+* VirtualBox Guest Additions [${data['vbox_guest_additions']}](http://download.virtualbox.org/virtualbox/${data['vbox_guest_additionswov']}/)
+
+${'#### Checksum'}
+- lambda-linux-vbox.iso
+    - sha256 `${data['iso_sha256']}`
+    - md5 `${data['iso_md5']}`
+"""
+    release_desc_template = mako.template.Template(templ)
+
+    # kernelwov = kernel without 'v'
+    # vbox_guest_additionswov = vbox_guest_additionswov
+    # This is required to point to correct links
+    release_yaml1 = release_yaml.copy()
+    release_yaml1['kernelwov'] = release_yaml['kernel'][1:]
+    release_yaml1['vbox_guest_additionswov'] = release_yaml[
+        'vbox_guest_additions'][1:]
+
+    return release_desc_template.render(data=release_yaml1)
+
+
+def read_release_yaml():
+    with open('release.yaml', 'r') as yaml_file:
+        yaml_string = yaml_file.read()
+    x = yaml.load_all(yaml_string, Loader=yaml.CLoader)
+    return x.next()
+
+
+def iso_checksums(iso):
+    checksums = {}
+
+    cmd = "sha256sum %s" % iso
+    output = subprocess.check_output(shlex.split(cmd))
+    checksums['iso_sha256'] = output.split()[0]
+
+    cmd = "md5sum %s" % iso
+    output = subprocess.check_output(shlex.split(cmd))
+    checksums['iso_md5'] = output.split()[0]
+
+    return checksums
+
+
+def main():
+    release_yaml = read_release_yaml()
+
+    parser = argparse.ArgumentParser(
+        description='Release lambda-linux-vbox.iso on GitHub',
+        usage='''release <args>
+--github_security_token GitHub token
+--iso                   Path lambda-linux-vbox.iso file
+--pre_release           Indicate if pre-release
+''')
+    parser.add_argument(
+        '--github_security_token', help='GitHub token', required=True)
+    parser.add_argument(
+        '--iso', help='Path to lambda-linux-vbox.iso file', required=True)
+    parser.add_argument(
+        '--pre_release',
+        type=bool,
+        default=False,
+        help='Indicate if pre-release')
+    args = parser.parse_args(sys.argv[1:])
+
+    if not os.path.exists(args.iso):
+        print "%s does not exist!" % args.iso
+        sys.exit(1)
+
+    release_yaml.update(iso_checksums(args.iso))
+
+    release_desc = gen_release_desc(release_yaml)
+
+    print "Checking if release already exists"
+    cmd = "github-release info --security-token %s --user %s --repo %s --tag %s" % (
+        args.github_security_token, release_yaml['github_user'],
+        release_yaml['github_repo'], release_yaml['github_tag'])
+    ret = subprocess.call(shlex.split(cmd))
+
+    if ret != 1:
+        print "Release already exists, cleaning it up"
+        cmd = "github-release delete --security-token %s --user %s --repo %s --tag %s" % (
+            args.github_security_token, release_yaml['github_user'],
+            release_yaml['github_repo'], release_yaml['github_tag'])
+        subprocess.check_output(shlex.split(cmd))
+
+    print "Creating release on github"
+    if args.pre_release:
+        cmd = "github-release release --pre-release --security-token %s --user %s --repo %s --tag %s --name %s --description '%s'" % (
+            args.github_security_token, release_yaml['github_user'],
+            release_yaml['github_repo'], release_yaml['github_tag'],
+            release_yaml['github_tag'], release_desc)
+    else:
+        cmd = "github-release release --security-token %s --user %s --repo %s --tag %s --name %s --description '%s'" % (
+            args.github_security_token, release_yaml['github_user'],
+            release_yaml['github_repo'], release_yaml['github_tag'],
+            release_yaml['github_tag'], release_desc)
+    subprocess.check_output(shlex.split(cmd))
+
+    print "Uploading lambda-linux-vbox.iso"
+    cmd = "github-release upload --security-token %s --user %s --repo %s --tag %s --name %s --file %s" % (
+        args.github_security_token, release_yaml['github_user'],
+        release_yaml['github_repo'], release_yaml['github_tag'],
+        'lambda-linux-vbox.iso', args.iso)
+    subprocess.check_output(shlex.split(cmd))
+
+
+if __name__ == '__main__':
+    main()
