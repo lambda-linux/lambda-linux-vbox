@@ -11,7 +11,7 @@ import mako.template
 
 def gen_release_desc(release_yaml):
     templ = """* Lambda Linux VirtualBox ISO [${data['github_tag']}](https://github.com/lambda-linux/lambda-linux-vbox/releases/tag/${data['github_tag']})
-* Docker [${data['docker']}](https://github.com/docker/docker/releases/tag/${data['docker']})
+* Docker [${data['docker']}](https://github.com/moby/moby/releases/tag/${data['docker']})
 * Kernel [${data['kernel']}](https://cdn.kernel.org/pub/linux/kernel/v4.x/ChangeLog-${data['kernelwov']})
 * VirtualBox Guest Additions [${data['vbox_guest_additions']}](http://download.virtualbox.org/virtualbox/${data['vbox_guest_additionswov']}/)
 
