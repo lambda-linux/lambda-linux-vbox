@@ -25,8 +25,8 @@ system that powers [AWS](https://aws.amazon.com/).
 
 * LTS Kernel [v4.9.27](https://cdn.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.27)
 * VirtualBox Guest Additions [v5.1.20](http://download.virtualbox.org/virtualbox/5.1.20/)
-* Docker [v1.12.6](https://github.com/docker/docker/releases/tag/v1.12.6)
-* Device mapper storage driver in [direct-lvm](https://docs.docker.com/v1.12/engine/userguide/storagedriver/device-mapper-driver/#/configure-direct-lvm-mode-for-production) mode
+* Docker [v17.03.1-ce](https://github.com/moby/moby/releases/tag/v17.03.1-ce)
+* Device mapper storage driver in [direct-lvm](https://docs.docker.com/engine/userguide/storagedriver/device-mapper-driver) mode
 * Container and data persistence via disk auto mount on `/var/lib/lambda-machine-local` and `docker-pool` logical volume
 * Rolling release with atomic updates
 
