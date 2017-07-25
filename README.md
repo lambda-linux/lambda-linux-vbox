@@ -23,7 +23,7 @@ system that powers [AWS](https://aws.amazon.com/).
 <a name="container_host"></a>
 ### Container Host
 
-* LTS Kernel [v4.9.27](https://cdn.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.27)
+* LTS Kernel [v4.9.32](https://cdn.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.32)
 * VirtualBox Guest Additions [v5.1.20](http://download.virtualbox.org/virtualbox/5.1.20/)
 * Docker [v17.03.1-ce](https://github.com/moby/moby/releases/tag/v17.03.1-ce)
 * Device mapper storage driver in [direct-lvm](https://docs.docker.com/engine/userguide/storagedriver/device-mapper-driver) mode
@@ -39,8 +39,8 @@ features &ndash;
 
 | Package Category | Package Name |
 | --- | --- |
-| Editors | vim, emacs |
-| Programming languages | perl, tcl <br><br>gcc48, clang <br><br>ruby18, ruby20, ruby21, ruby22, ruby23 <br><br>python26, python27, python34, python35 <br><br>php56, php70 <br><br>golang16, golang17 (in [EPLL](https://lambda-linux.io/blog/2014/12/15/announcing-extra-packages-for-amazon-linux-and-lambda-linux-project/) Repository) <br><br>nodejs4, nodejs6 (in [EPLL](https://lambda-linux.io/blog/2014/12/15/announcing-extra-packages-for-amazon-linux-and-lambda-linux-project/) Repository) <br><br>java-1.6.0-openjdk, java-1.7.0-openjdk, java-1.8.0-openjdk <br><br>tomcat6, tomcat7, tomcat8 |
+| Editors | vim, emacs, emacs24 (in [EPLL](https://lambda-linux.io/blog/2014/12/15/announcing-extra-packages-for-amazon-linux-and-lambda-linux-project/)) |
+| Programming languages | perl, tcl <br><br>gcc48, clang, clang4 (in [EPLL](https://lambda-linux.io/blog/2014/12/15/announcing-extra-packages-for-amazon-linux-and-lambda-linux-project/)) <br><br>ruby18, ruby20, ruby21, ruby22, ruby23 <br><br>python26, python27, python34, python35 <br><br>php56, php70 <br><br>golang16, golang17 (in [EPLL](https://lambda-linux.io/blog/2014/12/15/announcing-extra-packages-for-amazon-linux-and-lambda-linux-project/) Repository) <br><br>nodejs4, nodejs6 (in [EPLL](https://lambda-linux.io/blog/2014/12/15/announcing-extra-packages-for-amazon-linux-and-lambda-linux-project/) Repository) <br><br>java-1.6.0-openjdk, java-1.7.0-openjdk, java-1.8.0-openjdk <br><br>tomcat6, tomcat7, tomcat8 |
 | Databases | mysql55, mysql56 <br><br>postgresql93, postgresql94, postgresql95 |
 | Webserver | httpd24, lighttpd, nginx, haproxy |
 | Shell | dash, bash, tcsh, zsh |
