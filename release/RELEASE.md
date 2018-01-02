@@ -7,7 +7,7 @@ docker build -t lambda-linux-vbox-release .
 
 docker run --rm -v `pwd`:`pwd` \
   -ti lambda-linux-vbox-release \
-  /sbin/my_init -- /sbin/setuser ll-user /bin/bash -l
+  /bin/su -l -s /bin/sh ll-user
 ```
 
 To create release, first update, commit and push `release/release.yaml`. Then
