@@ -1,3 +1,0 @@
-
-Lambda Linux Bootloader Stage
-
