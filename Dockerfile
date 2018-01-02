@@ -5,6 +5,10 @@ RUN \
   apk update && \
   apk add \
     curl \
+    py2-mako \
+    py2-yaml \
+    python2 \
+    sudo \
     vim && \
   \
   # setup ll-user
