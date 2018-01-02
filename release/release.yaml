@@ -1,6 +1,6 @@
-github_tag: v1703.1.2
+github_tag: v1801.0.0
 github_user: lambda-linux
 github_repo: lambda-linux-vbox
-docker: v17.03.1-ce
-kernel: v4.9.43
-vbox_guest_additions: v5.1.20
+docker: v17.09.1-ce
+kernel: v4.9.65
+vbox_guest_additions: v5.1.30
