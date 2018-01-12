@@ -23,7 +23,7 @@ from
 <a name="container_host"></a>
 ### Container Host
 
-* LTS Kernel [v4.9.65](https://cdn.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.65)
+* LTS Kernel [v4.9.71](https://cdn.kernel.org/pub/linux/kernel/v4.x/ChangeLog-4.9.71)
 * VirtualBox Guest Additions [v5.1.30](http://download.virtualbox.org/virtualbox/5.1.30/)
 * Docker [v17.09.1-ce](https://github.com/moby/moby/releases/tag/v17.09.1-ce)
 * [Overlay2](https://docs.docker.com/v17.06/engine/userguide/storagedriver/overlayfs-driver/) storage driver with ext4 as backing filesystem
